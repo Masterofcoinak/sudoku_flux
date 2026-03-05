@@ -28,6 +28,7 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
   Timer? _timer;
   Duration _elapsed = Duration.zero;
   late AnimationController _streakController;
+  bool _wasComplete = false;
 
   @override
   void initState() { 
@@ -58,6 +59,13 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) {
     final state = context.watch<SudokuState>();
+    if (_wasComplete && !state.isComplete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _elapsed = Duration.zero);
+        _startTimer();
+      });
+    }
+    _wasComplete = state.isComplete;
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -74,8 +82,17 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
             const SizedBox(width: 20),
             const Icon(Icons.stars, color: _accent, size: 18),
             const SizedBox(width: 4),
-            Text("${state.scoreManager.currentScore}", 
+            Text("${state.scoreManager.currentScore}",
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _accent)),
+            const SizedBox(width: 4),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: state.recentPoints > 0
+                ? Text("+${state.recentPoints}",
+                    key: ValueKey(state.recentPoints),
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.greenAccent))
+                : const SizedBox(width: 32, key: ValueKey(0)),
+            ),
           ],
         ),
         actions: [
@@ -88,14 +105,14 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
       ),
       body: Column(
         children: [
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: _StatusRow()),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: _StatusRow()),
           const _SudokuBoard(),
           _StreakBar(controller: _streakController),
-          const Spacer(),
+          const SizedBox(height: 8),
           const _ActionBar(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           const _NumberPad(),
-          const SizedBox(height: 32),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -108,43 +125,88 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
 class _StreakBar extends StatelessWidget {
   final AnimationController controller;
   const _StreakBar({required this.controller});
-  
+
+  static const _sectionColors = [
+    Color(0xFF4CAF50), // grün
+    Color(0xFF00BCD4), // cyan
+    Color(0xFF2196F3), // blau
+    Color(0xFF9C27B0), // lila
+    Color(0xFFFF8A00), // orange (FLOW)
+  ];
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<SudokuState>();
-    final level = state.scoreManager.streakLevel;
-    final progress = level / 5.0;
-    final isMax = level == 5;
+    final streakValue = state.scoreManager.streakValue;
+    final multiplier = state.scoreManager.scoreMultiplier;
+    final isFlow = streakValue >= 4.5;
 
-    return AnimatedBuilder(
+return AnimatedBuilder(
       animation: controller,
       builder: (context, child) {
-        return Container(
-          height: 16,
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05), 
-            borderRadius: BorderRadius.circular(8),
-            border: isMax ? Border.all(color: _accent.withValues(alpha: controller.value), width: 1) : null,
-          ),
-          child: Stack(
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 400),
-                width: (MediaQuery.of(context).size.width - 48) * progress,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: isMax ? [Colors.orange, Colors.yellow] : [Colors.blue, Colors.cyan]),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: isMax ? [BoxShadow(color: _accent.withValues(alpha: 0.4 * controller.value), blurRadius: 8)] : [],
-                ),
+              Expanded(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final totalWidth = constraints.maxWidth;
+                  final fillWidth = (streakValue / 5.0) * totalWidth;
+                  return Stack(
+                    children: [
+                      Container(
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          height: 12,
+                          width: fillWidth,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: () {
+                                final count = ((streakValue / 1.0).ceil()).clamp(1, 5);
+                                final cols = _sectionColors.sublist(0, count);
+                                return cols.length >= 2 ? cols : [cols[0], cols[0]];
+                              }(),
+                            ),
+                            boxShadow: isFlow ? [BoxShadow(color: _accent.withValues(alpha: 0.4 * controller.value), blurRadius: 8)] : [],
+                          ),
+                        ),
+                      ),
+                      ...List.generate(4, (i) {
+                        final x = (i + 1) / 5.0 * totalWidth;
+                        return Positioned(
+                          left: x - 0.5,
+                          child: Container(width: 1, height: 12, color: Colors.black.withValues(alpha: 0.4)),
+                        );
+                      }),
+                    ],
+                  );
+                }),
               ),
-              Center(
-                child: Text(
-                  isMax ? "FLOW x2.0" : "STREAK x1.$level",
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white, 
-                    shadows: [Shadow(blurRadius: 2, color: Colors.black)]),
-                ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "x${multiplier.toStringAsFixed(1)}",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isFlow ? _accent.withValues(alpha: 0.7 + 0.3 * controller.value) : Colors.white70,
+                    ),
+                  ),
+                  Text(
+                    "+${state.nextMovePoints}",
+                    style: const TextStyle(fontSize: 10, color: Colors.white38),
+                  ),
+                ],
               ),
             ],
           ),
@@ -184,7 +246,7 @@ class _AssistBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
         decoration: BoxDecoration(
           color: isOn ? _accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
@@ -291,6 +353,7 @@ class _ActionBar extends StatelessWidget {
       _ActionIcon(icon: Icons.undo, label: 'Undo', onTap: state.undo),
       _ActionIcon(icon: Icons.backspace_outlined, label: 'Clear', onTap: () => state.applyNumber(0)),
       _ActionIcon(icon: state.pencilMode ? Icons.edit : Icons.edit_outlined, label: 'Notes', onTap: state.togglePencil, color: state.pencilMode ? _accent : Colors.white70),
+      _ActionIcon(icon: Icons.bolt, label: 'Quick', onTap: state.toggleQuickMode, color: state.quickMode ? _accent : Colors.white70),
       _ActionIcon(icon: Icons.redo, label: 'Redo', onTap: (){}),
     ]);
   }

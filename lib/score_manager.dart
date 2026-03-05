@@ -3,8 +3,12 @@ import 'sudoku_engine.dart';
 
 class ScoreManager {
   int currentScore = 0;
-  int streakLevel = 0; // 0 bis 5
+  double streakValue = 0.0; // 0.0 bis 5.0
   DateTime? lastCorrectTime;
+  Difficulty _difficulty = Difficulty.easy;
+
+  int get streakLevel => streakValue.floor().clamp(0, 5);
+  double get scoreMultiplier => 1.0 + (streakValue / 5.0);
 
   void init(Difficulty d) {
     currentScore = {
@@ -13,31 +17,20 @@ class ScoreManager {
       Difficulty.hard: 10000,
       Difficulty.expert: 20000,
     }[d]!;
-    streakLevel = 0;
+    streakValue = 0.0;
     lastCorrectTime = null;
+    _difficulty = d;
   }
 
   void handleCorrectMove(Difficulty d, double multiplier) {
-    final now = DateTime.now();
-    int flowLimit = {
-      Difficulty.easy: 5,
-      Difficulty.medium: 8,
-      Difficulty.hard: 12,
-      Difficulty.expert: 15
+    lastCorrectTime = DateTime.now();
+    final fillAmount = {
+      Difficulty.easy: 1.2,
+      Difficulty.medium: 0.9,
+      Difficulty.hard: 0.65,
+      Difficulty.expert: 0.5,
     }[d]!;
-
-    if (lastCorrectTime != null) {
-      if (now.difference(lastCorrectTime!).inSeconds <= flowLimit) {
-        if (streakLevel < 5) streakLevel++;
-      } else {
-        // Stufenweiser Abstieg bei Zeitüberschreitung
-        if (streakLevel > 0) streakLevel--;
-      }
-    } else {
-      streakLevel = 1;
-    }
-
-    lastCorrectTime = now;
+    streakValue = (streakValue + fillAmount).clamp(0.0, 5.0);
 
     double base = {
       Difficulty.easy: 50,
@@ -45,10 +38,8 @@ class ScoreManager {
       Difficulty.hard: 200,
       Difficulty.expert: 400
     }[d]!.toDouble();
-    
-    // Faktor im Flow (x2 bei Level 5)
-    double flowBonus = (streakLevel == 5) ? 2.0 : 1.0;
-    currentScore += (base * multiplier * flowBonus).toInt();
+
+    currentScore += (base * multiplier * scoreMultiplier).toInt();
   }
 
   void handleWrongMove(Difficulty d) {
@@ -59,11 +50,19 @@ class ScoreManager {
       Difficulty.expert: 400
     }[d]!;
     currentScore = (currentScore - penalty).clamp(0, 999999);
-    // Fehler bestraft Streak stärker
-    streakLevel = (streakLevel - 2).clamp(0, 5);
+    streakValue = (streakValue - 1.5).clamp(0.0, 5.0);
   }
 
   void tick() {
     if (currentScore > 0) currentScore -= 1;
+    if (streakValue > 0) {
+      final decay = {
+        Difficulty.easy: 0.20,
+        Difficulty.medium: 0.12,
+        Difficulty.hard: 0.08,
+        Difficulty.expert: 0.05,
+      }[_difficulty]!;
+      streakValue = (streakValue - decay).clamp(0.0, 5.0);
+    }
   }
 }

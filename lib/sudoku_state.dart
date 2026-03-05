@@ -21,6 +21,8 @@ class SudokuState extends ChangeNotifier {
   int? lastPlacedRow, lastPlacedCol;
   int? previousPlacedRow, previousPlacedCol;
   int? activeNumber;
+  int recentPoints = 0;
+  Timer? _recentPointsTimer;
 
   bool pencilMode = false;
   bool showErrors = false;
@@ -28,6 +30,7 @@ class SudokuState extends ChangeNotifier {
   bool highlightNumbers = false;
   bool highlightLines = false;
   bool scanSudoku = false;
+  bool quickMode = false;
 
   Difficulty difficulty = Difficulty.easy;
   bool isComplete = false;
@@ -70,7 +73,7 @@ class SudokuState extends ChangeNotifier {
 
   void selectCell(int r, int c) {
     selectedRow = r; selectedCol = c;
-    if (activeNumber != null) {
+    if (quickMode && activeNumber != null) {
       if (lastPlacedRow != null && (lastPlacedRow != r || lastPlacedCol != c)) {
         previousPlacedRow = lastPlacedRow;
         previousPlacedCol = lastPlacedCol;
@@ -82,13 +85,17 @@ class SudokuState extends ChangeNotifier {
   }
 
   void setActiveNumber(int? n) {
-    if (activeNumber == n) { 
-      activeNumber = null; 
+    if (activeNumber == n) {
+      activeNumber = null;
     } else {
       activeNumber = n;
-      previousPlacedRow = null; previousPlacedCol = null;
-      selectedRow = null; selectedCol = null;
-      lastPlacedRow = null; lastPlacedCol = null;
+      if (!quickMode && selectedRow != null && selectedCol != null) {
+        applyNumber(n!);
+      } else {
+        previousPlacedRow = null; previousPlacedCol = null;
+        selectedRow = null; selectedCol = null;
+        lastPlacedRow = null; lastPlacedCol = null;
+      }
     }
     notifyListeners();
   }
@@ -116,7 +123,17 @@ class SudokuState extends ChangeNotifier {
         if (highlightLines) mult *= 0.25;
         if (highlightNumbers) mult *= 0.50;
         if (highlightSelect) mult *= 0.75;
+        final before = scoreManager.currentScore;
         scoreManager.handleCorrectMove(difficulty, mult);
+        final gained = scoreManager.currentScore - before;
+        if (gained > 0) {
+          recentPoints = gained;
+          _recentPointsTimer?.cancel();
+          _recentPointsTimer = Timer(const Duration(milliseconds: 1200), () {
+            recentPoints = 0;
+            notifyListeners();
+          });
+        }
       } else if (!isCorrect && n != 0) {
         scoreManager.handleWrongMove(difficulty);
       }
@@ -139,6 +156,7 @@ class SudokuState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleQuickMode() { quickMode = !quickMode; notifyListeners(); }
   void togglePencil() { pencilMode = !pencilMode; notifyListeners(); }
   void toggleErrors() { showErrors = !showErrors; notifyListeners(); }
   void toggleHighlightSelect() { highlightSelect = !highlightSelect; notifyListeners(); }
@@ -167,6 +185,22 @@ class SudokuState extends ChangeNotifier {
     ));
     
     notifyListeners();
+  }
+
+  int get nextMovePoints {
+    double mult = 1.0;
+    if (scanSudoku) mult *= 0.0;
+    if (showErrors) mult *= 0.10;
+    if (highlightLines) mult *= 0.25;
+    if (highlightNumbers) mult *= 0.50;
+    if (highlightSelect) mult *= 0.75;
+    double base = {
+      Difficulty.easy: 50,
+      Difficulty.medium: 100,
+      Difficulty.hard: 200,
+      Difficulty.expert: 400,
+    }[difficulty]!.toDouble();
+    return (base * mult * scoreManager.scoreMultiplier).toInt();
   }
 
   bool isCellInSelectionArea(int r, int c) => highlightSelect && selectedRow != null && (r == selectedRow || c == selectedCol || (r ~/ 3 == selectedRow! ~/ 3 && c ~/ 3 == selectedCol! ~/ 3));
@@ -203,5 +237,5 @@ class SudokuState extends ChangeNotifier {
   }
 
   @override
-  void dispose() { _tickTimer?.cancel(); super.dispose(); }
+  void dispose() { _tickTimer?.cancel(); _recentPointsTimer?.cancel(); super.dispose(); }
 }
