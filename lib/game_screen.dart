@@ -496,37 +496,152 @@ class _SolvedOverlay extends StatelessWidget {
   final Difficulty difficulty;
   final bool isNewRecord;
   const _SolvedOverlay({required this.score, required this.difficulty, required this.isNewRecord});
+
   @override
   Widget build(BuildContext context) {
+    final state = context.watch<SudokuState>();
+    final sm = state.scoreManager;
+    final isRelax = state.relaxMode;
+    final isPerfect = state.errorCount == 0;
+
+    // Ø Vergleich (gleiche Schwierigkeit + relax/normal)
+    final myEntries = state.profileEntries(state.activeProfile.initials)
+        .where((e) => e.difficulty == difficulty.name && e.isRelax == isRelax).toList();
+    final myAvg = myEntries.isEmpty ? 0 : (myEntries.map((e) => e.score).reduce((a,b)=>a+b) / myEntries.length).round();
+    final globalEntries = state.highscores.where((e) => e.difficulty == difficulty.name && e.isRelax == isRelax).toList();
+    final globalAvg = globalEntries.isEmpty ? 0 : (globalEntries.map((e) => e.score).reduce((a,b)=>a+b) / globalEntries.length).round();
+
+    final vsMyAvg = myAvg > 0 ? ((score - myAvg) / myAvg * 100).round() : null;
+    final vsGlobal = globalAvg > 0 ? ((score - globalAvg) / globalAvg * 100).round() : null;
+
     return Container(
-      color: Colors.black.withValues(alpha: 0.9),
-      child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.emoji_events, color: _accent, size: 80),
-        const SizedBox(height: 16),
-        const Text("SOLVED!", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: _accent)),
-        if (isNewRecord) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.amber)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.star, color: Colors.amber, size: 16),
-              SizedBox(width: 6),
-              Text("NEUER REKORD!", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
-              SizedBox(width: 6),
-              Icon(Icons.star, color: Colors.amber, size: 16),
+      color: Colors.black.withValues(alpha: 0.92),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(children: [
+            Icon(isRelax ? Icons.spa_outlined : Icons.emoji_events,
+              color: isRelax ? _relaxAccent : _accent, size: 60),
+            const SizedBox(height: 8),
+            Text("SOLVED!", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold,
+              color: isRelax ? _relaxAccent : _accent)),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (isRelax) ...[
+                const Icon(Icons.spa_outlined, color: _relaxAccent, size: 13),
+                const SizedBox(width: 4),
+                const Text("Relax", style: TextStyle(color: _relaxAccent, fontSize: 12)),
+                const SizedBox(width: 12),
+              ],
+              if (isPerfect) ...[
+                const Icon(Icons.check_circle, color: Colors.greenAccent, size: 13),
+                const SizedBox(width: 4),
+                const Text("Fehlerfrei", style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
+              ],
             ]),
-          ),
-        ],
-        const SizedBox(height: 8),
-        Text("Score: $score", style: const TextStyle(fontSize: 24, color: Colors.white)),
-        const SizedBox(height: 24),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: _accent, foregroundColor: Colors.black),
-          onPressed: () => context.read<SudokuState>().newGame(difficulty),
-          child: const Text("Play Again"),
+            if (isNewRecord) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.amber)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.star, color: Colors.amber, size: 14),
+                  SizedBox(width: 5),
+                  Text("NEUER REKORD!", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                  SizedBox(width: 5),
+                  Icon(Icons.star, color: Colors.amber, size: 14),
+                ]),
+              ),
+            ],
+            const SizedBox(height: 20),
+            // Score Aufschlüsselung
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(14)),
+              child: Column(children: [
+                _ScoreLine("Startpunkte", sm.startingScore, color: Colors.white54),
+                _ScoreLine("Richtige Züge", sm.earnedFromMoves, prefix: "+", color: Colors.greenAccent),
+                _ScoreLine("Zeitabzug", -sm.lostFromTime, prefix: "−", color: Colors.white38),
+                if (sm.lostFromHints > 0) _ScoreLine("Hints", -sm.lostFromHints, prefix: "−", color: Colors.orange),
+                if (sm.lostFromErrors > 0) _ScoreLine("Fehler", -sm.lostFromErrors, prefix: "−", color: Colors.red),
+                const Divider(color: Colors.white12, height: 20),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  const Text("GESAMT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text("$score", style: TextStyle(color: isRelax ? _relaxAccent : _accent,
+                    fontWeight: FontWeight.bold, fontSize: 18)),
+                ]),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            // Vergleich
+            if (vsMyAvg != null || vsGlobal != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(12)),
+                child: Column(children: [
+                  if (vsMyAvg != null) _CompareRow("vs. mein Ø", vsMyAvg),
+                  if (vsGlobal != null) _CompareRow("vs. Gesamt-Ø", vsGlobal),
+                ]),
+              ),
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white54, side: const BorderSide(color: Colors.white24)),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("Menü"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: _accent, foregroundColor: Colors.black),
+                onPressed: () => context.read<SudokuState>().newGame(difficulty),
+                child: const Text("Nochmal"),
+              ),
+            ]),
+          ]),
         ),
-      ])),
+      ),
+    );
+  }
+}
+
+class _ScoreLine extends StatelessWidget {
+  final String label;
+  final int value;
+  final String prefix;
+  final Color color;
+  const _ScoreLine(this.label, this.value, {this.prefix = "", this.color = Colors.white70});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: TextStyle(color: color, fontSize: 13)),
+        Text("$prefix${value.abs()}", style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
+      ]),
+    );
+  }
+}
+
+class _CompareRow extends StatelessWidget {
+  final String label;
+  final int percent;
+  const _CompareRow(this.label, this.percent);
+  @override
+  Widget build(BuildContext context) {
+    final better = percent >= 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        Row(children: [
+          Icon(better ? Icons.arrow_upward : Icons.arrow_downward,
+            color: better ? Colors.greenAccent : Colors.redAccent, size: 13),
+          Text("${percent.abs()}%",
+            style: TextStyle(color: better ? Colors.greenAccent : Colors.redAccent,
+              fontSize: 12, fontWeight: FontWeight.bold)),
+        ]),
+      ]),
     );
   }
 }

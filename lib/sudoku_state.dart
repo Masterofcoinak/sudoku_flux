@@ -31,6 +31,28 @@ class SudokuState extends ChangeNotifier {
   bool get showErrorsTemporarily => _showErrorsTemporarily;
   Timer? _errorRevealTimer;
 
+  // Statistik-Getter
+  List<HighscoreEntry> profileEntries(String initials) =>
+      highscores.where((e) => e.userName == initials).toList();
+
+  int dayStreak() {
+    if (_playDates.isEmpty) return 0;
+    final sorted = [..._playDates]..sort((a, b) => b.compareTo(a));
+    final today = DateTime.now();
+    int streak = 0;
+    DateTime check = today;
+    for (int i = 0; i < 365; i++) {
+      final s = "${check.year}-${check.month.toString().padLeft(2,'0')}-${check.day.toString().padLeft(2,'0')}";
+      if (sorted.contains(s)) {
+        streak++;
+        check = check.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
   bool get hasUserProgress {
     for (var r in grid) {
       for (var cell in r) {
@@ -60,6 +82,7 @@ class SudokuState extends ChangeNotifier {
   Timer? _tickTimer;
 
   List<HighscoreEntry> highscores = [];
+  List<String> _playDates = []; // "yyyy-MM-dd" Strings
 
   // profileId -> difficultyName -> SavedGame
   final Map<String, Map<String, SavedGame>> _savedGames = {};
@@ -168,6 +191,12 @@ class SudokuState extends ChangeNotifier {
       highscores = list.map((j) => HighscoreEntry.fromJson(j)).toList();
     }
 
+    // Play-Dates laden
+    final pdJson = prefs.getString('playDates');
+    if (pdJson != null) {
+      _playDates = (jsonDecode(pdJson) as List).map((e) => e as String).toList();
+    }
+
     // Gespeicherte Spiele laden
     final sgJson = prefs.getString('savedGames');
     if (sgJson != null) {
@@ -191,6 +220,7 @@ class SudokuState extends ChangeNotifier {
     prefs.setString('profiles', jsonEncode(profiles.map((p) => p.toJson()).toList()));
     prefs.setString('activeProfileId', activeProfileId);
     prefs.setString('highscores', jsonEncode(highscores.map((h) => h.toJson()).toList()));
+    prefs.setString('playDates', jsonEncode(_playDates));
     final sgMap = <String, dynamic>{};
     for (final profileId in _savedGames.keys) {
       sgMap[profileId] = {};
@@ -283,7 +313,7 @@ class SudokuState extends ChangeNotifier {
     _initPrefs();
     _tickTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!isComplete) {
-        if (!relaxMode) scoreManager.tick();
+        scoreManager.tick();
         notifyListeners();
       }
     });
@@ -324,7 +354,7 @@ class SudokuState extends ChangeNotifier {
     _saveUndo();
     grid[pos[0]][pos[1]].value = _solution[pos[0]][pos[1]];
     grid[pos[0]][pos[1]].notes.clear();
-    scoreManager.currentScore = (scoreManager.currentScore - hintCost).clamp(0, 999999);
+    scoreManager.deductHint(hintCost);
     _checkCompletion();
     notifyListeners();
   }
@@ -495,18 +525,31 @@ class SudokuState extends ChangeNotifier {
     isComplete = true;
     deleteSavedGame(difficulty);
 
-    // Neuer Rekord prüfen
+    // Neuer Rekord prüfen (nur gleiche Kategorie relax/normal)
     final prevBest = highscores
-        .where((e) => e.userName == activeProfile.initials && e.difficulty == difficulty.name)
+        .where((e) => e.userName == activeProfile.initials && e.difficulty == difficulty.name && e.isRelax == relaxMode)
         .fold(0, (max, e) => e.score > max ? e.score : max);
     isNewRecord = scoreManager.currentScore > prevBest;
+
+    // Spieldatum tracken
+    final today = DateTime.now();
+    final dateStr = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
+    if (!_playDates.contains(dateStr)) _playDates.add(dateStr);
 
     highscores.add(HighscoreEntry(
       userName: activeProfile.initials,
       profileColor: activeProfile.color,
       score: scoreManager.currentScore,
       difficulty: difficulty.name,
-      date: DateTime.now(),
+      date: today,
+      isRelax: relaxMode,
+      isPerfect: errorCount == 0,
+      elapsedSeconds: 0, // wird vom GameScreen gesetzt
+      earnedFromMoves: scoreManager.earnedFromMoves,
+      lostFromTime: scoreManager.lostFromTime,
+      lostFromHints: scoreManager.lostFromHints,
+      lostFromErrors: scoreManager.lostFromErrors,
+      startingScore: scoreManager.startingScore,
     ));
     _persist();
     notifyListeners();

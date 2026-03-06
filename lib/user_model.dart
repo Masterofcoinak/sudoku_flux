@@ -131,6 +131,14 @@ class HighscoreEntry {
   final int score;
   final String difficulty;
   final DateTime date;
+  final bool isRelax;
+  final bool isPerfect;
+  final int elapsedSeconds;
+  final int earnedFromMoves;
+  final int lostFromTime;
+  final int lostFromHints;
+  final int lostFromErrors;
+  final int startingScore;
 
   HighscoreEntry({
     required this.userName,
@@ -138,6 +146,14 @@ class HighscoreEntry {
     required this.score,
     required this.difficulty,
     required this.date,
+    this.isRelax = false,
+    this.isPerfect = false,
+    this.elapsedSeconds = 0,
+    this.earnedFromMoves = 0,
+    this.lostFromTime = 0,
+    this.lostFromHints = 0,
+    this.lostFromErrors = 0,
+    this.startingScore = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -146,6 +162,14 @@ class HighscoreEntry {
     'score': score,
     'difficulty': difficulty,
     'date': date.toIso8601String(),
+    'isRelax': isRelax,
+    'isPerfect': isPerfect,
+    'elapsedSeconds': elapsedSeconds,
+    'earnedFromMoves': earnedFromMoves,
+    'lostFromTime': lostFromTime,
+    'lostFromHints': lostFromHints,
+    'lostFromErrors': lostFromErrors,
+    'startingScore': startingScore,
   };
 
   factory HighscoreEntry.fromJson(Map<String, dynamic> j) => HighscoreEntry(
@@ -154,5 +178,13 @@ class HighscoreEntry {
     score: j['score'],
     difficulty: j['difficulty'],
     date: DateTime.parse(j['date']),
+    isRelax: j['isRelax'] ?? false,
+    isPerfect: j['isPerfect'] ?? false,
+    elapsedSeconds: j['elapsedSeconds'] ?? 0,
+    earnedFromMoves: j['earnedFromMoves'] ?? 0,
+    lostFromTime: j['lostFromTime'] ?? 0,
+    lostFromHints: j['lostFromHints'] ?? 0,
+    lostFromErrors: j['lostFromErrors'] ?? 0,
+    startingScore: j['startingScore'] ?? 0,
   );
 }

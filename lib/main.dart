@@ -6,6 +6,7 @@ import 'sudoku_engine.dart';
 import 'highscore_screen.dart';
 import 'user_model.dart';
 import 'settings_screen.dart';
+import 'stats_screen.dart';
 
 void main() {
   runApp(
@@ -94,10 +95,13 @@ class _MainMenuState extends State<MainMenu> {
                   const SizedBox(height: 8),
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     IconButton(
+                      icon: const Icon(Icons.bar_chart, color: Colors.white54, size: 28),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())),
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.leaderboard, color: Colors.white54, size: 28),
                       onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HighscoreScreen())),
                     ),
-                    const SizedBox(width: 16),
                     IconButton(
                       icon: const Icon(Icons.settings_outlined, color: Colors.white54, size: 28),
                       onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
@@ -192,6 +196,7 @@ class _ProfileColumn extends StatelessWidget {
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (_) => _ProfileDetailSheet(profile: profile),
     );
   }
@@ -211,8 +216,9 @@ class _ProfileDetailSheet extends StatelessWidget {
     final best = scores.isEmpty ? 0 : scores.map((e) => e.score).reduce((a, b) => a > b ? a : b);
     final avg = scores.isEmpty ? 0 : (scores.map((e) => e.score).reduce((a, b) => a + b) / scores.length).round();
 
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
