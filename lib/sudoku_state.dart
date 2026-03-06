@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'sudoku_engine.dart';
 import 'score_manager.dart';
 import 'user_model.dart';
 import 'dart:async';
+import 'dart:convert';
 
 class SudokuCell {
   final bool given;
@@ -90,6 +92,7 @@ class SudokuState extends ChangeNotifier {
       highlightLines: highlightLines,
       savedAt: DateTime.now(),
     );
+    _persist();
   }
 
   void resumeGame(SavedGame saved) {
@@ -122,6 +125,7 @@ class SudokuState extends ChangeNotifier {
 
   void deleteSavedGame(Difficulty d) {
     _savedGames[activeProfileId]?.remove(d.name);
+    _persist();
   }
 
   List<UserProfile> profiles = [
@@ -129,23 +133,94 @@ class SudokuState extends ChangeNotifier {
   ];
   String activeProfileId = '1';
 
+  // Persistenz
+  SharedPreferences? _prefs;
+
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFromStorage();
+  }
+
+  void _loadFromStorage() {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    // Profile laden
+    final profilesJson = prefs.getString('profiles');
+    if (profilesJson != null) {
+      final list = jsonDecode(profilesJson) as List;
+      profiles = list.map((j) => UserProfile.fromJson(j)).toList();
+      if (profiles.isEmpty) {
+        profiles = [UserProfile(id: '1', initials: 'P1', color: Colors.orange)];
+      }
+    }
+
+    // Aktives Profil
+    activeProfileId = prefs.getString('activeProfileId') ?? profiles.first.id;
+    if (!profiles.any((p) => p.id == activeProfileId)) {
+      activeProfileId = profiles.first.id;
+    }
+
+    // Highscores laden
+    final hsJson = prefs.getString('highscores');
+    if (hsJson != null) {
+      final list = jsonDecode(hsJson) as List;
+      highscores = list.map((j) => HighscoreEntry.fromJson(j)).toList();
+    }
+
+    // Gespeicherte Spiele laden
+    final sgJson = prefs.getString('savedGames');
+    if (sgJson != null) {
+      final outer = jsonDecode(sgJson) as Map<String, dynamic>;
+      for (final profileId in outer.keys) {
+        final inner = outer[profileId] as Map<String, dynamic>;
+        _savedGames[profileId] = {};
+        for (final diffName in inner.keys) {
+          _savedGames[profileId]![diffName] = SavedGame.fromJson(inner[diffName]);
+        }
+      }
+    }
+
+    _loadSettingsFromProfile();
+    notifyListeners();
+  }
+
+  void _persist() {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    prefs.setString('profiles', jsonEncode(profiles.map((p) => p.toJson()).toList()));
+    prefs.setString('activeProfileId', activeProfileId);
+    prefs.setString('highscores', jsonEncode(highscores.map((h) => h.toJson()).toList()));
+    final sgMap = <String, dynamic>{};
+    for (final profileId in _savedGames.keys) {
+      sgMap[profileId] = {};
+      for (final diffName in _savedGames[profileId]!.keys) {
+        sgMap[profileId][diffName] = _savedGames[profileId]![diffName]!.toJson();
+      }
+    }
+    prefs.setString('savedGames', jsonEncode(sgMap));
+  }
+
   UserProfile get activeProfile => profiles.firstWhere((p) => p.id == activeProfileId);
 
   void switchProfile(String id) {
     _saveSettingsToProfile();
     activeProfileId = id;
     _loadSettingsFromProfile();
+    _persist();
     notifyListeners();
   }
 
   void addProfile(UserProfile p) {
     profiles.add(p);
+    _persist();
     notifyListeners();
   }
 
   void updateActiveProfile({required String initials, required Color color}) {
     activeProfile.initials = initials;
     activeProfile.color = color;
+    _persist();
     notifyListeners();
   }
 
@@ -182,6 +257,7 @@ class SudokuState extends ChangeNotifier {
     if (highlightLines != null) p.highlightLines = highlightLines;
     if (showErrors != null) p.showErrors = showErrors;
     if (profileId == activeProfileId) _loadSettingsFromProfile();
+    _persist();
     notifyListeners();
   }
 
@@ -192,13 +268,19 @@ class SudokuState extends ChangeNotifier {
       activeProfileId = profiles.first.id;
       _loadSettingsFromProfile();
     }
+    _persist();
     notifyListeners();
   }
 
   final List<List<List<SudokuCell>>> _undoHistory = [];
+  final List<List<List<SudokuCell>>> _redoHistory = [];
+
+  bool isNewRecord = false;
+  int? lastCompletedBlock; // blockIndex 0-8 when a block just completed
 
   SudokuState() {
     newGame(Difficulty.easy);
+    _initPrefs();
     _tickTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!isComplete) {
         if (!relaxMode) scoreManager.tick();
@@ -261,6 +343,9 @@ class SudokuState extends ChangeNotifier {
 
     scoreManager.init(d);
     _undoHistory.clear();
+    _redoHistory.clear();
+    isNewRecord = false;
+    lastCompletedBlock = null;
     selectedRow = null; selectedCol = null;
     lastPlacedRow = null; lastPlacedCol = null;
     previousPlacedRow = null; previousPlacedCol = null;
@@ -338,6 +423,34 @@ class SudokuState extends ChangeNotifier {
       }
       cell.value = (cell.value == n) ? 0 : n;
       cell.notes.clear();
+      // Notizen auto-entfernen
+      if (n != 0 && isCorrect) {
+        final r = selectedRow!; final c = selectedCol!;
+        for (int i = 0; i < 9; i++) {
+          grid[r][i].notes.remove(n);
+          grid[i][c].notes.remove(n);
+        }
+        final br = (r ~/ 3) * 3; final bc = (c ~/ 3) * 3;
+        for (int dr = 0; dr < 3; dr++) {
+          for (int dc = 0; dc < 3; dc++) {
+            grid[br + dr][bc + dc].notes.remove(n);
+          }
+        }
+        // Block-Completion prüfen
+        final blockR = r ~/ 3; final blockC = c ~/ 3;
+        bool blockDone = true;
+        for (int dr = 0; dr < 3; dr++) {
+          for (int dc = 0; dc < 3; dc++) {
+            final gr = blockR * 3 + dr; final gc = blockC * 3 + dc;
+            if (grid[gr][gc].value != _solution[gr][gc]) { blockDone = false; break; }
+          }
+          if (!blockDone) break;
+        }
+        if (blockDone) {
+          lastCompletedBlock = blockR * 3 + blockC;
+          Timer(const Duration(milliseconds: 800), () { lastCompletedBlock = null; notifyListeners(); });
+        }
+      }
     }
     _checkCompletion();
     notifyListeners();
@@ -346,11 +459,21 @@ class SudokuState extends ChangeNotifier {
   void _saveUndo() {
     _undoHistory.add(grid.map((r) => r.map((c) => c.copy()).toList()).toList());
     if (_undoHistory.length > 50) _undoHistory.removeAt(0);
+    _redoHistory.clear();
   }
 
   void undo() {
     if (_undoHistory.isEmpty) return;
+    _redoHistory.add(grid.map((r) => r.map((c) => c.copy()).toList()).toList());
     grid = _undoHistory.removeLast();
+    lastPlacedRow = null; lastPlacedCol = null;
+    notifyListeners();
+  }
+
+  void redo() {
+    if (_redoHistory.isEmpty) return;
+    _undoHistory.add(grid.map((r) => r.map((c) => c.copy()).toList()).toList());
+    grid = _redoHistory.removeLast();
     lastPlacedRow = null; lastPlacedCol = null;
     notifyListeners();
   }
@@ -372,7 +495,12 @@ class SudokuState extends ChangeNotifier {
     isComplete = true;
     deleteSavedGame(difficulty);
 
-    // Highscore speichern
+    // Neuer Rekord prüfen
+    final prevBest = highscores
+        .where((e) => e.userName == activeProfile.initials && e.difficulty == difficulty.name)
+        .fold(0, (max, e) => e.score > max ? e.score : max);
+    isNewRecord = scoreManager.currentScore > prevBest;
+
     highscores.add(HighscoreEntry(
       userName: activeProfile.initials,
       profileColor: activeProfile.color,
@@ -380,7 +508,7 @@ class SudokuState extends ChangeNotifier {
       difficulty: difficulty.name,
       date: DateTime.now(),
     ));
-    
+    _persist();
     notifyListeners();
   }
 

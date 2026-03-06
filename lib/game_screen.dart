@@ -335,7 +335,9 @@ class _SudokuBoard extends StatelessWidget {
         child: Stack(children: [
           Column(children: List.generate(9, (r) => Expanded(child: Row(children: List.generate(9, (c) => Expanded(child: _Cell(r: r, c: c))))))),
           IgnorePointer(child: CustomPaint(size: Size.infinite, painter: _GridPainter())),
-          if (state.isComplete) _SolvedOverlay(score: state.scoreManager.currentScore, difficulty: state.difficulty),
+          if (state.lastCompletedBlock != null)
+            IgnorePointer(child: CustomPaint(size: Size.infinite, painter: _BlockCompletePainter(state.lastCompletedBlock!))),
+          if (state.isComplete) _SolvedOverlay(score: state.scoreManager.currentScore, difficulty: state.difficulty, isNewRecord: state.isNewRecord),
         ]),
       ),
     );
@@ -414,7 +416,7 @@ class _ActionBar extends StatelessWidget {
       _ActionIcon(icon: Icons.backspace_outlined, label: 'Clear', onTap: () => state.applyNumber(0)),
       _ActionIcon(icon: state.pencilMode ? Icons.edit : Icons.edit_outlined, label: 'Notes', onTap: state.togglePencil, color: state.pencilMode ? _accent : Colors.white70),
       _ActionIcon(icon: Icons.bolt, label: 'Quick', onTap: state.toggleQuickMode, color: state.quickMode ? _accent : Colors.white70),
-      _ActionIcon(icon: Icons.redo, label: 'Redo', onTap: (){}),
+      _ActionIcon(icon: Icons.redo, label: 'Redo', onTap: state.redo),
     ]);
   }
 }
@@ -436,27 +438,64 @@ class _NumberPad extends StatelessWidget {
     return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: List.generate(9, (i) {
       final n = i + 1;
       final isActive = state.activeNumber == n;
+      final remaining = state.remainingCount(n);
+      final used = remaining == 0;
       return GestureDetector(
-        onTap: () => state.setActiveNumber(n),
+        onTap: used ? null : () => state.setActiveNumber(n),
         child: Column(children: [
           Container(
             width: 44, height: 44,
-            decoration: BoxDecoration(color: isActive ? _accent : Colors.white10, shape: BoxShape.circle, border: Border.all(color: isActive ? Colors.white : Colors.transparent, width: 2)),
+            decoration: BoxDecoration(
+              color: used ? Colors.transparent : (isActive ? _accent : Colors.white10),
+              shape: BoxShape.circle,
+              border: Border.all(color: used ? Colors.white12 : (isActive ? Colors.white : Colors.transparent), width: 2),
+            ),
             alignment: Alignment.center,
-            child: Text("$n", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: isActive ? Colors.black : Colors.white)),
+            child: Text("$n", style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.bold,
+              color: used ? Colors.white12 : (isActive ? Colors.black : Colors.white),
+              decoration: used ? TextDecoration.lineThrough : null,
+              decorationColor: Colors.white24,
+            )),
           ),
           const SizedBox(height: 4),
-          Text("${state.remainingCount(n)}", style: const TextStyle(fontSize: 10, color: Colors.white38)),
+          Text(used ? "✓" : "$remaining",
+            style: TextStyle(fontSize: 10, color: used ? Colors.green.withValues(alpha: 0.6) : Colors.white38)),
         ]),
       );
     }));
   }
 }
 
+class _BlockCompletePainter extends CustomPainter {
+  final int blockIndex;
+  _BlockCompletePainter(this.blockIndex);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final br = (blockIndex ~/ 3) * 3;
+    final bc = (blockIndex % 3) * 3;
+    final step = size.width / 9;
+    final rect = Rect.fromLTWH(bc * step, br * step, 3 * step, 3 * step);
+    final paint = Paint()
+      ..color = const Color(0xFFFF8A00).withValues(alpha: 0.25)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(4)), paint);
+    final border = Paint()
+      ..color = const Color(0xFFFF8A00).withValues(alpha: 0.8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+    canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(4)), border);
+  }
+
+  @override bool shouldRepaint(_BlockCompletePainter old) => old.blockIndex != blockIndex;
+}
+
 class _SolvedOverlay extends StatelessWidget {
   final int score;
   final Difficulty difficulty;
-  const _SolvedOverlay({required this.score, required this.difficulty});
+  final bool isNewRecord;
+  const _SolvedOverlay({required this.score, required this.difficulty, required this.isNewRecord});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -465,11 +504,26 @@ class _SolvedOverlay extends StatelessWidget {
         const Icon(Icons.emoji_events, color: _accent, size: 80),
         const SizedBox(height: 16),
         const Text("SOLVED!", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: _accent)),
+        if (isNewRecord) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.amber)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.star, color: Colors.amber, size: 16),
+              SizedBox(width: 6),
+              Text("NEUER REKORD!", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 13)),
+              SizedBox(width: 6),
+              Icon(Icons.star, color: Colors.amber, size: 16),
+            ]),
+          ),
+        ],
+        const SizedBox(height: 8),
         Text("Score: $score", style: const TextStyle(fontSize: 24, color: Colors.white)),
         const SizedBox(height: 24),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: _accent, foregroundColor: Colors.black),
-          onPressed: () => context.read<SudokuState>().newGame(difficulty), 
+          onPressed: () => context.read<SudokuState>().newGame(difficulty),
           child: const Text("Play Again"),
         ),
       ])),

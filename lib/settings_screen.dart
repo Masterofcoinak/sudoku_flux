@@ -81,8 +81,8 @@ class SettingsScreen extends StatelessWidget {
               description: "Falsch platzierte Zahlen rot markieren",
               value: state.showErrors, onChanged: (_) => state.toggleErrors()),
             _Toggle(icon: Icons.auto_fix_high, label: "Notizen automatisch entfernen",
-              description: "Entfernt Notizen wenn eine Zahl platziert wird",
-              value: false, onChanged: null, comingSoon: true),
+              description: "Entfernt Notizen in Zeile, Spalte und Block wenn eine Zahl platziert wird",
+              value: true, onChanged: null),
           ]),
 
           _Section(title: "DARSTELLUNG", children: [
@@ -114,7 +114,7 @@ class SettingsScreen extends StatelessWidget {
           ]),
 
           _Section(title: "ÜBER", children: [
-            _Arrow(icon: Icons.info_outline, label: "Version", description: "Sudoku Flux v1.0"),
+            _Arrow(icon: Icons.info_outline, label: "Version", description: "Sudoku Flux v2.0"),
           ]),
 
           const SizedBox(height: 32),
