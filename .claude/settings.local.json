@@ -4,7 +4,12 @@
       "Bash(flutter doctor:*)",
       "Bash(flutter devices:*)",
       "Bash(flutter emulators:*)",
-      "Bash(flutter run:*)"
+      "Bash(flutter run:*)",
+      "Bash(flutter build:*)",
+      "Bash(adb connect:*)",
+      "Bash(/c/Users/A.koop/AppData/Local/Android/Sdk/platform-tools/adb.exe connect:*)",
+      "Bash(/c/Users/A.koop/AppData/Local/Android/Sdk/platform-tools/adb.exe pair:*)",
+      "Bash(/c/Users/A.koop/AppData/Local/Android/Sdk/platform-tools/adb.exe devices:*)"
     ]
   }
 }

@@ -55,10 +55,10 @@ class _List extends StatelessWidget {
       itemCount: items.length,
       itemBuilder: (c, i) => ListTile(
         leading: CircleAvatar(
-          backgroundColor: const Color(0xFFFF8A00).withValues(alpha: 0.2),
-          child: Text("${i + 1}", style: const TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold)),
+          backgroundColor: items[i].profileColor,
+          child: Text(items[i].userName, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
         ),
-        title: Text(items[i].userName, style: const TextStyle(color: Colors.white)),
+        title: Text("${i + 1}. ${items[i].userName}", style: const TextStyle(color: Colors.white)),
         subtitle: Text(items[i].difficulty.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 12)),
         trailing: Text("${items[i].score}", style: const TextStyle(color: Color(0xFFFF8A00), fontWeight: FontWeight.bold, fontSize: 18)),
       ),

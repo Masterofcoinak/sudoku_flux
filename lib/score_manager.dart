@@ -6,6 +6,7 @@ class ScoreManager {
   double streakValue = 0.0; // 0.0 bis 5.0
   DateTime? lastCorrectTime;
   Difficulty _difficulty = Difficulty.easy;
+  set difficulty(Difficulty d) => _difficulty = d;
 
   int get streakLevel => streakValue.floor().clamp(0, 5);
   double get scoreMultiplier => 1.0 + (streakValue / 5.0);
@@ -40,6 +41,17 @@ class ScoreManager {
     }[d]!.toDouble();
 
     currentScore += (base * multiplier * scoreMultiplier).toInt();
+  }
+
+  void handleErrorThreshold(Difficulty d) {
+    streakValue = 0.0;
+    int penalty = {
+      Difficulty.easy: 300,
+      Difficulty.medium: 600,
+      Difficulty.hard: 1200,
+      Difficulty.expert: 2400,
+    }[d]!;
+    currentScore = (currentScore - penalty).clamp(0, 999999);
   }
 
   void handleWrongMove(Difficulty d) {

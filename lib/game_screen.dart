@@ -8,18 +8,25 @@ import 'dart:async';
 const _accent = Color(0xFFFF8A00);
 const _bg = Color(0xFF1E1E1E);
 
+// Relax Modus - Nachtozean
+const _relaxBg = Color(0xFF0D1B2A);
+const _relaxBgTop = Color(0xFF0D2B35);
+const _relaxAccent = Color(0xFF4DD0C4);
+
 class GameScreen extends StatelessWidget {
   final Difficulty initialDifficulty;
-  const GameScreen({super.key, this.initialDifficulty = Difficulty.easy});
+  final Duration resumedElapsed;
+  const GameScreen({super.key, this.initialDifficulty = Difficulty.easy, this.resumedElapsed = Duration.zero});
 
   @override
   Widget build(BuildContext context) {
-    return const _GameView();
+    return _GameView(resumedElapsed: resumedElapsed);
   }
 }
 
 class _GameView extends StatefulWidget {
-  const _GameView();
+  final Duration resumedElapsed;
+  const _GameView({this.resumedElapsed = Duration.zero});
   @override
   State<_GameView> createState() => _GameViewState();
 }
@@ -29,11 +36,19 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
   Duration _elapsed = Duration.zero;
   late AnimationController _streakController;
   bool _wasComplete = false;
+  late SudokuState _state;
 
   @override
-  void initState() { 
-    super.initState(); 
-    _startTimer(); 
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _state = context.read<SudokuState>();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _elapsed = widget.resumedElapsed;
+    _startTimer();
     _streakController = AnimationController(vsync: this, duration: const Duration(milliseconds: 500))..repeat(reverse: true);
   }
 
@@ -50,10 +65,13 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
   }
 
   @override
-  void dispose() { 
-    _timer?.cancel(); 
-    _streakController.dispose(); 
-    super.dispose(); 
+  void dispose() {
+    _timer?.cancel();
+    _streakController.dispose();
+    if (!_state.isComplete && _state.hasUserProgress) {
+      _state.saveCurrentGame(_elapsed);
+    }
+    super.dispose();
   }
 
   @override
@@ -66,39 +84,63 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
       });
     }
     _wasComplete = state.isComplete;
-    return Scaffold(
-      backgroundColor: _bg,
+    final isRelax = state.relaxMode;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isRelax
+            ? const [_relaxBgTop, _relaxBg]
+            : const [_bg, _bg],
+        ),
+      ),
+      child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: _bg,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white70),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(_fmt(_elapsed), style: const TextStyle(fontSize: 16, color: Colors.white70)),
-            const SizedBox(width: 20),
-            const Icon(Icons.stars, color: _accent, size: 18),
-            const SizedBox(width: 4),
-            Text("${state.scoreManager.currentScore}",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _accent)),
-            const SizedBox(width: 4),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: state.recentPoints > 0
-                ? Text("+${state.recentPoints}",
-                    key: ValueKey(state.recentPoints),
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.greenAccent))
-                : const SizedBox(width: 32, key: ValueKey(0)),
+        title: state.relaxMode
+          ? const Icon(Icons.spa_outlined, color: Colors.tealAccent, size: 20)
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(_fmt(_elapsed), style: const TextStyle(fontSize: 16, color: Colors.white70)),
+                const SizedBox(width: 20),
+                const Icon(Icons.stars, color: _accent, size: 18),
+                const SizedBox(width: 4),
+                Text("${state.scoreManager.currentScore}",
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _accent)),
+                const SizedBox(width: 4),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: state.recentPoints > 0
+                    ? Text("+${state.recentPoints}",
+                        key: ValueKey(state.recentPoints),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.greenAccent))
+                    : const SizedBox(width: 32, key: ValueKey(0)),
+                ),
+              ],
             ),
-          ],
-        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.leaderboard_rounded, color: Colors.white70),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HighscoreScreen())),
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HighscoreScreen())),
+            child: Container(
+              margin: const EdgeInsets.only(right: 12),
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: state.activeProfile.color,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(state.activeProfile.initials,
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
           ),
         ],
         centerTitle: true,
@@ -107,7 +149,7 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
         children: [
           const Padding(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: _StatusRow()),
           const _SudokuBoard(),
-          _StreakBar(controller: _streakController),
+          if (!state.relaxMode) _StreakBar(controller: _streakController),
           const SizedBox(height: 8),
           const _ActionBar(),
           const SizedBox(height: 12),
@@ -115,7 +157,7 @@ class _GameViewState extends State<_GameView> with SingleTickerProviderStateMixi
           const SizedBox(height: 16),
         ],
       ),
-    );
+    ));
   }
 
   String _fmt(Duration d) => 
@@ -194,14 +236,32 @@ return AnimatedBuilder(
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    "x${multiplier.toStringAsFixed(1)}",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: isFlow ? _accent.withValues(alpha: 0.7 + 0.3 * controller.value) : Colors.white70,
+                  if (state.errorCount >= 3)
+                    GestureDetector(
+                      onTap: state.showErrorsTemporarily ? null : state.revealAndClearErrors,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: state.showErrorsTemporarily ? 0.35 : 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.withValues(alpha: 0.6)),
+                        ),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 12),
+                          const SizedBox(width: 3),
+                          Text("${state.errorCount}", style: const TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.bold)),
+                        ]),
+                      ),
+                    )
+                  else
+                    Text(
+                      "x${multiplier.toStringAsFixed(1)}",
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: isFlow ? _accent.withValues(alpha: 0.7 + 0.3 * controller.value) : Colors.white70,
+                      ),
                     ),
-                  ),
                   Text(
                     "+${state.nextMovePoints}",
                     style: const TextStyle(fontSize: 10, color: Colors.white38),
@@ -232,7 +292,7 @@ class _StatusRow extends StatelessWidget {
         const SizedBox(width: 8),
         _AssistBtn(icon: Icons.remove_red_eye, label: 'Errors', isOn: state.showErrors, onTap: state.toggleErrors),
         const SizedBox(width: 8),
-        _AssistBtn(icon: Icons.qr_code_scanner, label: 'Scan', isOn: state.scanSudoku, onTap: state.toggleScan),
+        _AssistBtn(icon: Icons.lightbulb_outline, label: 'Hint', isOn: false, onTap: state.useHint),
       ]),
     );
   }
